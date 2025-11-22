@@ -7,15 +7,13 @@ from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, JobQueue
 
-# Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Конфигурация
-BOT_TOKEN = "8012455423:AAEM4hF8P27QOUrwJUhBarnHeQfmKdZCeXA"
+BOT_TOKEN = "TOKEN"
 CARDS_FOLDER = "cards"
 DATA_FILE = "users_data.json"
 SUPPORTED_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'}
@@ -28,13 +26,12 @@ class CardBot:
         self.user_cooldowns = {}
         self.user_notifications = {}
         self.user_vsrakost = {}
-        self.user_names = {}  # Храним имена пользователей из Telegram
+        self.user_names = {}
         self.card_points = {}
         self.load_cards()
         self.load_user_data()
     
     def load_cards(self):
-        """Загрузка списка карт из папки"""
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             cards_path = os.path.join(current_dir, CARDS_FOLDER)
@@ -68,7 +65,6 @@ class CardBot:
             logger.error(f"Ошибка при загрузке карт: {e}")
     
     def load_user_data(self):
-        """Загрузка данных пользователей из файла"""
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             data_path = os.path.join(current_dir, DATA_FILE)
@@ -79,14 +75,12 @@ class CardBot:
                 
                 print(f"📊 Загружаем данные пользователей...")
                 
-                # Восстанавливаем коллекции карт пользователей
                 user_cards_data = data.get('user_cards', {})
                 self.user_cards = {}
                 for user_id_str, cards_list in user_cards_data.items():
                     user_id = int(user_id_str)
                     self.user_cards[user_id] = cards_list
                 
-                # Восстанавливаем кулдауны
                 cooldowns_data = data.get('user_cooldowns', {})
                 self.user_cooldowns = {}
                 for user_id_str, cooldown_str in cooldowns_data.items():
@@ -94,7 +88,6 @@ class CardBot:
                     if cooldown_str:
                         self.user_cooldowns[user_id] = datetime.fromisoformat(cooldown_str)
                 
-                # Восстанавливаем рейтинг VSRAKOSTI пользователей
                 vsrakost_data = data.get('user_vsrakost', {})
                 self.user_vsrakost = {}
                 for user_id_str, vsrakost_points in vsrakost_data.items():
@@ -102,29 +95,24 @@ class CardBot:
                     self.user_vsrakost[user_id] = vsrakost_points
                     print(f"   ⭐ Пользователь {user_id}: {vsrakost_points} очков VSRAKOSTI")
                 
-                # Восстанавливаем имена пользователей (если есть)
                 names_data = data.get('user_names', {})
                 self.user_names = {}
                 for user_id_str, name in names_data.items():
                     user_id = int(user_id_str)
                     self.user_names[user_id] = name
                 
-                # Восстанавливаем очки карт
                 card_points_data = data.get('card_points', {})
                 if card_points_data:
                     self.card_points = card_points_data
                     print(f"   🎴 Загружены очки для {len(self.card_points)} карт")
                 else:
-                    # Если очки карт не загружены, инициализируем их случайными значениями
                     print("   🎴 Инициализируем очки для карт...")
                     for card in self.cards_list:
                         if card not in self.card_points:
                             self.card_points[card] = random.randint(1, 100)
                     print(f"   ✅ Инициализированы очки для {len(self.card_points)} карт")
-                    # Сохраняем сразу после инициализации
                     self.save_user_data()
                 
-                # Проверяем, что у всех карт есть очки
                 cards_without_points = [card for card in self.cards_list if card not in self.card_points]
                 if cards_without_points:
                     print(f"   🎴 Назначаем очки для {len(cards_without_points)} новых карт...")
@@ -142,12 +130,10 @@ class CardBot:
                 self.user_cooldowns = {}
                 self.user_vsrakost = {}
                 self.user_names = {}
-                # Инициализируем очки для всех карт
                 print("🎴 Инициализируем очки для всех карт...")
                 for card in self.cards_list:
                     self.card_points[card] = random.randint(1, 100)
                 print(f"✅ Инициализированы очки для {len(self.card_points)} карт")
-                # Сохраняем данные сразу
                 self.save_user_data()
                 
         except Exception as e:
@@ -156,18 +142,15 @@ class CardBot:
             self.user_cooldowns = {}
             self.user_vsrakost = {}
             self.user_names = {}
-            # Инициализируем очки для всех карт даже при ошибке
             for card in self.cards_list:
                 self.card_points[card] = random.randint(1, 100)
             self.save_user_data()
     
     def save_user_data(self):
-        """Сохранение данных пользователей в файл ВКЛЮЧАЯ ОЧКИ КАРТ"""
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             data_path = os.path.join(current_dir, DATA_FILE)
             
-            # Конвертируем данные для JSON
             user_cards_data = {}
             for user_id, cards_list in self.user_cards.items():
                 user_cards_data[str(user_id)] = cards_list
@@ -180,19 +163,17 @@ class CardBot:
             for user_id, vsrakost_points in self.user_vsrakost.items():
                 vsrakost_data[str(user_id)] = vsrakost_points
             
-            # Сохраняем имена пользователей
             names_data = {}
             for user_id, name in self.user_names.items():
                 names_data[str(user_id)] = name
             
-            # Сохраняем очки карт
             card_points_data = self.card_points.copy()
             
             data = {
                 'user_cards': user_cards_data,
                 'user_cooldowns': cooldowns_data,
                 'user_vsrakost': vsrakost_data,
-                'user_names': names_data,  # Сохраняем имена
+                'user_names': names_data,
                 'card_points': card_points_data
             }
             
@@ -208,13 +189,11 @@ class CardBot:
             print(f"❌ Ошибка при сохранении данных: {e}")
     
     def get_random_card(self):
-        """Получение случайной карты"""
         if not self.cards_list:
             return None
         return random.choice(self.cards_list)
     
     def can_open_card(self, user_id):
-        """Проверяет, может ли пользователь открыть карту"""
         if user_id not in self.user_cooldowns:
             return True, None
         
@@ -231,16 +210,13 @@ class CardBot:
         return True, None
     
     def set_cooldown(self, user_id, application: Application = None):
-        """Устанавливает время кулдауна для пользователя"""
         self.user_cooldowns[user_id] = datetime.now()
         self.save_user_data()
         
-        # Запускаем задачу для уведомления о завершении таймера
         if application:
             self.schedule_notification(user_id, application)
     
     def schedule_notification(self, user_id: int, application: Application):
-        """Планирует уведомление о завершении таймера"""
         if user_id in self.user_notifications:
             try:
                 self.user_notifications[user_id].schedule_removal()
@@ -263,7 +239,6 @@ class CardBot:
                 self.user_notifications[user_id] = job
     
     async def send_notification(self, context: ContextTypes.DEFAULT_TYPE, user_id: int):
-        """Отправляет уведомление пользователю о том, что можно открыть карту"""
         try:
             if user_id in self.user_notifications:
                 del self.user_notifications[user_id]
@@ -279,15 +254,11 @@ class CardBot:
             print(f"❌ Ошибка при отправке уведомления пользователю {user_id}: {e}")
     
     def add_card_to_user(self, user_id, card_name):
-        """Добавление карты пользователю с начислением очков"""
-        # Инициализируем список карт для пользователя, если его нет
         if user_id not in self.user_cards:
             self.user_cards[user_id] = []
         
-        # Добавляем карту
         self.user_cards[user_id].append(card_name)
         
-        # Начисляем очки VSRAKOSTI пользователю за получение карты
         card_points = self.card_points.get(card_name, 0)
         if user_id not in self.user_vsrakost:
             self.user_vsrakost[user_id] = 0
@@ -301,18 +272,14 @@ class CardBot:
         print(f"📊 У пользователя {user_id}: было {old_points} очков, стало {new_points} очков")
         print(f"📦 Всего карт у пользователя {user_id}: {len(self.user_cards[user_id])}")
         
-        # Сохраняем данные (включая очки карт)
         self.save_user_data()
         return card_points
     
     def update_user_name(self, user_id, first_name, last_name=None):
-        """Обновление имени пользователя из Telegram"""
-        # Формируем полное имя
         full_name = first_name
         if last_name:
             full_name = f"{first_name} {last_name}"
         
-        # Сохраняем имя только если оно изменилось или отсутствует
         if user_id not in self.user_names or self.user_names[user_id] != full_name:
             self.user_names[user_id] = full_name
             print(f"📝 Обновлено имя пользователя {user_id}: '{full_name}'")
@@ -321,22 +288,17 @@ class CardBot:
         return full_name
     
     def get_user_display_name(self, user_id, update: Update = None):
-        """Получение отображаемого имени пользователя"""
-        # Если есть сохраненное имя - используем его
         if user_id in self.user_names:
             return self.user_names[user_id]
         
-        # Если передан update, пытаемся получить имя из Telegram
         if update and update.effective_user:
             user = update.effective_user
             full_name = self.update_user_name(user_id, user.first_name, user.last_name)
             return full_name
         
-        # Если ничего нет - используем ID
         return f"Игрок_{user_id}"
     
     def get_user_vsrakost_rank(self, user_id):
-        """Получение позиции пользователя в рейтинге"""
         if user_id not in self.user_vsrakost:
             return None
         
@@ -347,28 +309,23 @@ class CardBot:
         return None
     
     def get_top_users(self, limit=10):
-        """Получение топа пользователей по VSRAKOSTI"""
         sorted_users = sorted(self.user_vsrakost.items(), key=lambda x: x[1], reverse=True)
         return sorted_users[:limit]
     
     def get_user_cards_count(self, user_id):
-        """Получение количества карт у пользователя"""
         if user_id not in self.user_cards:
             return 0
         return len(self.user_cards[user_id])
     
     def get_user_cards_list(self, user_id):
-        """Получение списка карт пользователя"""
         if user_id not in self.user_cards:
             return []
         return self.user_cards[user_id]
     
     def get_total_cards_count(self):
-        """Получение общего количества карт в колоде"""
         return len(self.cards_list)
     
     def get_cooldown_time(self, user_id):
-        """Получение оставшегося времени кулдауна"""
         if user_id not in self.user_cooldowns:
             return None
         
@@ -382,11 +339,9 @@ class CardBot:
         time_left = cooldown_end - now
         return time_left
 
-# Создаем экземпляр бота
 card_bot = CardBot()
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /start"""
     user_id = update.effective_user.id
     user_name = card_bot.get_user_display_name(user_id, update)
     total_cards = card_bot.get_total_cards_count()
@@ -398,7 +353,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         f"🎴 Добро пожаловать, {user_name}!\n"
     )
-    
     
     if not can_open:
         mins, secs = time_left
@@ -412,11 +366,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text)
 
 async def drop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /drop - выдача случайной карты"""
     user_id = update.effective_user.id
     user_name = card_bot.get_user_display_name(user_id, update)
     
-    # Проверяем кулдаун
     can_open, time_left = card_bot.can_open_card(user_id)
     if not can_open:
         mins, secs = time_left
@@ -436,10 +388,8 @@ async def drop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Получаем очки карты
     card_points = card_bot.card_points.get(card, 0)
     
-    # Получаем абсолютный путь к карте
     current_dir = os.path.dirname(os.path.abspath(__file__))
     card_path = os.path.join(current_dir, CARDS_FOLDER, card)
     
@@ -447,24 +397,20 @@ async def drop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"🎯 Карта дает {card_points} очков")
     
     try:
-        # Проверяем существование файла
         if not os.path.exists(card_path):
             await update.message.reply_text(f"❌ Файл карты не найден: {card}")
             print(f"❌ Файл не существует: {card_path}")
             return
         
-        # Отправляем картинку
         with open(card_path, 'rb') as photo:
             await update.message.reply_photo(
                 photo=photo,
                 caption=f"🎴 Новая SRAKA!\n💎 Даёт очков: {card_points}\n⏰ Следующая карта через {COOLDOWN_MINUTES} минут"
             )
         
-        # Устанавливаем кулдаун и добавляем карту пользователю
         card_bot.set_cooldown(user_id, context.application)
         earned_points = card_bot.add_card_to_user(user_id, card)
         
-        # Получаем обновленные данные пользователя
         user_total_points = card_bot.user_vsrakost.get(user_id, 0)
         user_rank = card_bot.get_user_vsrakost_rank(user_id)
         
@@ -476,7 +422,6 @@ async def drop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка при отправке карты")
 
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /list - показывает коллекцию пользователя"""
     user_id = update.effective_user.id
     user_name = card_bot.get_user_display_name(user_id, update)
     user_cards_count = card_bot.get_user_cards_count(user_id)
@@ -484,7 +429,6 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_points = card_bot.user_vsrakost.get(user_id, 0)
     user_rank = card_bot.get_user_vsrakost_rank(user_id)
     
-    # Проверяем кулдаун
     cooldown_time = card_bot.get_cooldown_time(user_id)
     
     message = f"🎴 Коллекция {user_name}:\n\n"
@@ -507,14 +451,12 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(message)
 
 async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /top - показывает топ игроков"""
     top_users = card_bot.get_top_users(limit=10)
     
     message = "🏆 ТОП-10 ИГРОКОВ ПО VSRAKOSTI 🏆\n\n"
     
     if top_users:
         for i, (user_id, points) in enumerate(top_users, 1):
-            # Для топа используем сохраненные имена
             if user_id in card_bot.user_names:
                 display_name = card_bot.user_names[user_id]
             else:
@@ -525,11 +467,9 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         message += "😴 Пока никто не заработал очков...\n"
     
-    
     await update.message.reply_text(message)
 
 def main():
-    """Основная функция запуска бота"""
     if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
         print("❌ ERROR: Замените BOT_TOKEN на ваш настоящий токен бота!")
         return
@@ -548,13 +488,11 @@ def main():
         print(f"👤 Автоматические имена из Telegram: ВКЛЮЧЕНО")
         print(f"💾 Сохранение очков карт: ВКЛЮЧЕНО")
         
-        # Показываем пример карт с очками
         print(f"\n🎴 Примеры карт с очками:")
         sample_cards = list(card_bot.card_points.items())[:5]
         for i, (card, points) in enumerate(sample_cards, 1):
             print(f"   {i}. {card} - {points} очков")
         
-        # Показываем общую статистику по очкам
         total_card_points = sum(card_bot.card_points.values())
         avg_points = total_card_points / len(card_bot.card_points) if card_bot.card_points else 0
         print(f"\n📊 Статистика очков:")
