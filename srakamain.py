@@ -28,8 +28,14 @@ class CardBot:
         self.user_vsrakost = {}
         self.user_names = {}
         self.card_points = {}
+        self.application = None
         self.load_cards()
         self.load_user_data()
+    
+    def set_application(self, application: Application):
+        """Устанавливает приложение для планирования задач"""
+        self.application = application
+        print("✅ Application установлен в CardBot")
     
     def load_cards(self):
         try:
@@ -210,13 +216,18 @@ class CardBot:
         return True, None
     
     def set_cooldown(self, user_id, application: Application = None):
+        """Устанавливает кулдаун и планирует уведомление"""
         self.user_cooldowns[user_id] = datetime.now()
         self.save_user_data()
         
-        if application:
-            self.schedule_notification(user_id, application)
+        app_to_use = application or self.application
+        if app_to_use:
+            self.schedule_notification(user_id, app_to_use)
+        else:
+            print(f"⚠️ Нет application для планирования уведомления пользователю {user_id}")
     
     def schedule_notification(self, user_id: int, application: Application):
+        """Планирует уведомление о завершении кулдауна"""
         if user_id in self.user_notifications:
             try:
                 self.user_notifications[user_id].schedule_removal()
@@ -231,27 +242,55 @@ class CardBot:
             delay = (cooldown_end - now).total_seconds()
             
             if delay > 0:
+                print(f"⏰ Планирую уведомление для {user_id} через {delay:.0f} секунд")
                 job = job_queue.run_once(
                     callback=lambda context: self.send_notification(context, user_id),
                     when=delay,
-                    name=f"cooldown_notification_{user_id}"
+                    name=f"cooldown_notification_{user_id}",
+                    chat_id=user_id,
+                    user_id=user_id
                 )
                 self.user_notifications[user_id] = job
+                print(f"✅ Уведомление запланировано для пользователя {user_id}")
     
     async def send_notification(self, context: ContextTypes.DEFAULT_TYPE, user_id: int):
+        """Отправляет уведомление о возможности открыть карту"""
         try:
             if user_id in self.user_notifications:
                 del self.user_notifications[user_id]
             
+            user_name = self.get_user_display_name(user_id)
+            
             await context.bot.send_message(
                 chat_id=user_id,
-                text="🎉 Таймер окончен! Теперь ты можешь открыть следующую карту!\n\n"
-                     "Используй команду /drop чтобы получить новую SRAKY!"
+                text=f"🎉 {user_name}, таймер окончен!\n\n"
+                     "Теперь ты можешь открыть следующую SRAKY!\n"
+                     "Используй команду /drop чтобы получить новую карту! 🎴"
             )
-            print(f"✅ Уведомление отправлено пользователю {user_id}")
+            print(f"✅ Уведомление отправлено пользователю {user_id} ({user_name})")
             
         except Exception as e:
             print(f"❌ Ошибка при отправке уведомления пользователю {user_id}: {e}")
+    
+    def restore_notifications(self, application: Application):
+        """Восстанавливает уведомления при перезапуске бота"""
+        print("🔄 Восстанавливаю уведомления о таймерах...")
+        now = datetime.now()
+        restored_count = 0
+        
+        for user_id, last_open_time in self.user_cooldowns.items():
+            cooldown_end = last_open_time + timedelta(minutes=COOLDOWN_MINUTES)
+            
+            if now < cooldown_end:
+                delay = (cooldown_end - now).total_seconds()
+                if delay > 0:
+                    self.schedule_notification(user_id, application)
+                    restored_count += 1
+                    print(f"   ✅ Восстановлено уведомление для {user_id} через {delay:.0f} сек")
+            else:
+                print(f"   ⏰ Таймер пользователя {user_id} уже истек")
+        
+        print(f"🔄 Восстановлено {restored_count} уведомлений")
     
     def add_card_to_user(self, user_id, card_name):
         if user_id not in self.user_cards:
@@ -352,16 +391,23 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     welcome_text = (
         f"🎴 Добро пожаловать, {user_name}!\n"
+        f"📊 Карт в коллекции: {user_cards_count}\n"
+        f"⭐ Очков VSRAKOSTI: {user_points}\n"
+        f"🎯 Всего карт в игре: {total_cards}\n\n"
     )
     
     if not can_open:
         mins, secs = time_left
-        welcome_text += f"⏳ Следующую карту можно открыть через: {mins} мин {secs} сек\n\n"
-
+        welcome_text += f"⏳ Следующую карту можно открыть через: {mins} мин {secs} сек\n"
+        welcome_text += f"🔔 Я отправлю тебе уведомление, когда таймер истечёт!\n\n"
     else:
         welcome_text += "✅ Можешь открыть карту прямо сейчас!\n\n"
     
-    welcome_text += "📋 Доступные команды:\n/drop - Получить карту\n/list - Моя коллекция\n/top - Топ игроков"
+    welcome_text += "📋 Доступные команды:\n"
+    welcome_text += "/drop - Получить карту 🎴\n"
+    welcome_text += "/list - Моя коллекция 📚\n"
+    welcome_text += "/top - Топ игроков 🏆\n\n"
+    welcome_text += f"⏰ Таймер между открытиями: {COOLDOWN_MINUTES} минут"
     
     await update.message.reply_text(welcome_text)
 
@@ -375,7 +421,8 @@ async def drop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"⏳ {user_name}, следующую карту можно открыть через:\n"
             f"🕐 {mins} минут {secs} секунд\n\n"
-            f"💡 Таймер: {COOLDOWN_MINUTES} минут между открытиями"
+            f"💡 Таймер: {COOLDOWN_MINUTES} минут между открытиями\n"
+            f"🔔 Я отправлю тебе уведомление, когда таймер истечёт!"
         )
         return
     
@@ -405,7 +452,8 @@ async def drop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(card_path, 'rb') as photo:
             await update.message.reply_photo(
                 photo=photo,
-                caption=f"🎴 Новая SRAKA!\n💎 Даёт очков: {card_points}\n⏰ Следующая карта через {COOLDOWN_MINUTES} минут"
+                caption=f"🎴 Новая SRAKA!\n💎 Даёт очков: {card_points}\n⏰ Следующая карта через {COOLDOWN_MINUTES} минут\n\n"
+                       f"🔔 Я отправлю тебе уведомление, когда можно будет открыть следующую карту!"
             )
         
         card_bot.set_cooldown(user_id, context.application)
@@ -444,7 +492,7 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mins = int(cooldown_time.total_seconds() // 60)
         secs = int(cooldown_time.total_seconds() % 60)
         message += f"⏳ До следующей карты: {mins} мин {secs} сек\n"
-
+        message += f"🔔 Уведомление придёт автоматически!\n"
     else:
         message += "✅ Можешь открыть следующую карту! Используй /drop"
     
@@ -463,15 +511,49 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 display_name = f"Игрок_{user_id}"
             
             medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-            message += f"{medal} {display_name} - {points} очков\n"
+            cards_count = card_bot.get_user_cards_count(user_id)
+            message += f"{medal} {display_name}\n"
+            message += f"   ⭐ Очки: {points} | 🎴 Карты: {cards_count}\n\n"
     else:
         message += "😴 Пока никто не заработал очков...\n"
+        message += "Используй /drop чтобы получить первую карту! 🎴"
+    
+    message += "\n💡 Используй /drop чтобы получить карты и подняться в рейтинге!"
+    
+    await update.message.reply_text(message)
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает статистику бота"""
+    total_users = len(card_bot.user_cards)
+    total_cards_in_collections = sum(len(cards) for cards in card_bot.user_cards.values())
+    total_points = sum(card_bot.user_vsrakost.values())
+    total_available_cards = card_bot.get_total_cards_count()
+    
+    message = "📊 СТАТИСТИКА БОТА 📊\n\n"
+    message += f"👥 Всего пользователей: {total_users}\n"
+    message += f"🎴 Всего карт у пользователей: {total_cards_in_collections}\n"
+    message += f"⭐ Всего очков VSRAKOSTI: {total_points}\n"
+    message += f"📁 Доступных карт: {total_available_cards}\n"
+    
+    if total_available_cards > 0:
+        avg_points_per_card = sum(card_bot.card_points.values()) / total_available_cards
+        max_points = max(card_bot.card_points.values())
+        min_points = min(card_bot.card_points.values())
+        
+        message += f"\n🎯 Статистика очков карт:\n"
+        message += f"   Среднее: {avg_points_per_card:.1f}\n"
+        message += f"   Максимальное: {max_points}\n"
+        message += f"   Минимальное: {min_points}\n"
     
     await update.message.reply_text(message)
 
 def main():
     if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
         print("❌ ERROR: Замените BOT_TOKEN на ваш настоящий токен бота!")
+        print("💡 Как получить токен:")
+        print("   1. Напишите @BotFather в Telegram")
+        print("   2. Создайте нового бота или выберите существующего")
+        print("   3. Скопируйте токен и вставьте вместо 'YOUR_BOT_TOKEN_HERE'")
         return
     
     total_cards = card_bot.get_total_cards_count()
@@ -479,7 +561,7 @@ def main():
         print("❌ ВНИМАНИЕ: Карты не найдены!")
         print("💡 Решение:")
         print("   1. Создайте папку 'cards' рядом с файлом бота")
-        print("   2. Добавьте в нее картинки (PNG, JPG, JPEG, GIF, WEBP)")
+        print("   2. Добавьте в нее картинки (PNG, JPG, JPEG, GIF, WEBP, BMP)")
         print("   3. Перезапустите бота")
     else:
         print(f"✅ Готов к работе! Загружено карт: {total_cards}")
@@ -487,6 +569,7 @@ def main():
         print(f"⭐ Система очков VSRAKOSTI: ВКЛЮЧЕНА")
         print(f"👤 Автоматические имена из Telegram: ВКЛЮЧЕНО")
         print(f"💾 Сохранение очков карт: ВКЛЮЧЕНО")
+        print(f"🔔 Система уведомлений: ВКЛЮЧЕНА")
         
         print(f"\n🎴 Примеры карт с очками:")
         sample_cards = list(card_bot.card_points.items())[:5]
@@ -504,14 +587,21 @@ def main():
     try:
         application = Application.builder().token(BOT_TOKEN).build()
         
+        card_bot.set_application(application)
+        
+        card_bot.restore_notifications(application)
+        
         application.add_handler(CommandHandler("start", start_command))
         application.add_handler(CommandHandler("drop", drop_command))
         application.add_handler(CommandHandler("list", list_command))
         application.add_handler(CommandHandler("top", top_command))
+        application.add_handler(CommandHandler("stats", stats_command))
         
-        print("🤖 Бот запускается...")
+        print("\n🤖 Бот запускается...")
         print("💬 Используйте /start в Telegram для начала работы")
-        application.run_polling()
+        print("🔔 Система уведомлений активирована и восстановлена")
+        print("🔄 Бот работает в режиме polling...")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
         print(f"❌ Ошибка при запуске бота: {e}")
